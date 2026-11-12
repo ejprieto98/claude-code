@@ -1,0 +1,9 @@
+{
+  "name": "cortana",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cortana voice agent (ElevenLabs Agents) web client",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node server.mjs" }
+}
