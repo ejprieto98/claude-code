@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cortana</title>
+  <style>
+    :root { color-scheme: dark; --accent: #4cc9f0; --bg: #0b1020; --card: #141a2e; --muted: #8a93b2; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: #e8ecf8; font: 16px/1.5 system-ui, sans-serif; }
+    main { width: min(640px, 92vw); background: var(--card); border-radius: 16px; padding: 28px; box-shadow: 0 10px 40px #0008; }
+    h1 { margin: 0 0 4px; font-size: 1.6rem; }
+    .sub { color: var(--muted); margin: 0 0 20px; }
+    .orb { width: 120px; height: 120px; margin: 12px auto 20px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #9be7ff, var(--accent) 45%, #1b3a6b); opacity: .35; transition: transform .15s, opacity .3s; }
+    .orb.on { opacity: 1; } .orb.speaking { animation: pulse 1s infinite ease-in-out; }
+    @keyframes pulse { 50% { transform: scale(1.08); } }
+    .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    button { border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; cursor: pointer; background: var(--accent); color: #04121c; font-weight: 600; }
+    button.secondary { background: #2a3352; color: #e8ecf8; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    #status { text-align: center; color: var(--muted); margin: 14px 0; min-height: 1.5em; }
+    #log { height: 220px; overflow-y: auto; background: #0d1326; border-radius: 10px; padding: 12px; font-size: .95rem; }
+    #log p { margin: 0 0 8px; } #log .ai b { color: var(--accent); } #log .user b { color: #f7b267; } #log .err { color: #ff6b6b; }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    input { flex: 1; border-radius: 10px; border: 1px solid #2a3352; background: #0d1326; color: inherit; padding: 10px; font: inherit; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Cortana</h1>
+  <p class="sub">Voice assistant powered by ElevenLabs Agents</p>
+  <div id="orb" class="orb" aria-hidden="true"></div>
+  <div class="row">
+    <button id="start">Start conversation</button>
+    <button id="stop" class="secondary" disabled>End</button>
+  </div>
+  <div id="status" role="status">Disconnected</div>
+  <div id="log" aria-live="polite"></div>
+  <form id="chat">
+    <input id="text" placeholder="Type a message to Cortana…" disabled autocomplete="off" />
+    <button id="send" disabled>Send</button>
+  </form>
+</main>
+
+<script type="module">
+  import { Conversation } from "https://esm.sh/@elevenlabs/client@0";
+
+  const AGENT_ID = "agent_5101m774rf25fjtvs1xx8sh99e5y";
+  const $ = (id) => document.getElementById(id);
+  let conversation = null;
+
+  const log = (who, text, cls = who) => {
+    const p = document.createElement("p");
+    p.className = cls;
+    p.innerHTML = `<b>${who === "ai" ? "Cortana" : who === "user" ? "You" : "!"}:</b> `;
+    p.append(document.createTextNode(text));
+    $("log").append(p);
+    $("log").scrollTop = $("log").scrollHeight;
+  };
+
+  const setConnected = (on) => {
+    $("start").disabled = on; $("stop").disabled = !on;
+    $("text").disabled = !on; $("send").disabled = !on;
+    $("orb").classList.toggle("on", on);
+    if (!on) $("orb").classList.remove("speaking");
+  };
+
+  // Prefer a server-issued WebRTC token (private agents); fall back to the public agent ID.
+  async function sessionAuth() {
+    try {
+      const r = await fetch("/api/conversation-token");
+      if (r.ok) {
+        const { token } = await r.json();
+        if (token) return { conversationToken: token };
+      }
+    } catch {}
+    return { agentId: AGENT_ID };
+  }
+
+  $("start").onclick = async () => {
+    $("start").disabled = true;
+    $("status").textContent = "Requesting microphone…";
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      $("status").textContent = "Connecting…";
+      conversation = await Conversation.startSession({
+        ...(await sessionAuth()),
+        connectionType: "webrtc",
+        onConnect: () => { setConnected(true); $("status").textContent = "Connected — start talking"; },
+        onDisconnect: () => { setConnected(false); $("status").textContent = "Disconnected"; conversation = null; },
+        onMessage: ({ message, source }) => log(source === "user" ? "user" : "ai", message),
+        onError: (err) => log("err", String(err?.message ?? err), "err"),
+        onModeChange: ({ mode }) => {
+          $("orb").classList.toggle("speaking", mode === "speaking");
+          $("status").textContent = mode === "speaking" ? "Cortana is speaking" : "Listening";
+        },
+      });
+    } catch (err) {
+      log("err", err.message ?? String(err), "err");
+      $("status").textContent = "Could not start";
+      setConnected(false);
+    }
+  };
+
+  $("stop").onclick = () => conversation?.endSession();
+
+  $("chat").onsubmit = (e) => {
+    e.preventDefault();
+    const text = $("text").value.trim();
+    if (!text || !conversation) return;
+    conversation.sendUserMessage(text);
+    log("user", text);
+    $("text").value = "";
+  };
+
+  $("text").oninput = () => conversation?.sendUserActivity();
+</script>
+</body>
+</html>
