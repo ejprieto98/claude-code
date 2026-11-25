@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Meridian">
+<meta name="theme-color" content="#1a0f0a">
+<title>Meridian</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;1,700;1,800&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: cinematic, precise, quietly ferocious — a test pilot's run at golden hour.
+IDEA: an aircraft instrument panel laid over a real canyon at sunset.
+PICTURE: a live ray-marched canyon — soft shadows, mirror water, light shafts, a ceramic-and-chrome ship.
+COLOUR and TYPE: sandstone, sunlight and deep water; instrument white with one amber accent; Barlow Condensed.
+LAYOUT: full-bleed 3D view; thin readouts hug the edges; hull bar at the thumb line.
+*/
+:root{--amber:#ffb547;--hot:#ff5a36;--ink:rgba(255,255,255,.92);--safeT:env(safe-area-inset-top,0px);--safeB:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;overflow:hidden;background:#140c08;touch-action:none;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+  font-family:"Barlow Condensed","Arial Narrow",-apple-system,system-ui,sans-serif;color:var(--ink)}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#gl{image-rendering:auto}
+.layer{position:fixed;inset:0;pointer-events:none}
+.hidden{opacity:0!important;visibility:hidden;pointer-events:none!important}
+.fade{transition:opacity .5s,visibility .5s}
+.num{font-variant-numeric:tabular-nums}
+#hud{text-shadow:0 1px 8px rgba(0,0,0,.45)}
+#score{position:absolute;top:calc(var(--safeT) + 6px);left:0;right:0;text-align:center;font-weight:700;font-size:42px;line-height:1}
+#combo{position:absolute;top:calc(var(--safeT) + 50px);left:0;right:0;text-align:center;font-weight:700;font-style:italic;font-size:18px;color:var(--amber);transition:transform .15s}
+#combo.pop{transform:scale(1.35)}
+.gauge{position:absolute;top:calc(var(--safeT) + 12px);font-weight:600;line-height:1}
+.gauge b{display:block;font-size:30px;font-weight:700}
+.gauge span{font-size:13px;opacity:.7}
+#spd{left:16px}#dst{right:16px;text-align:right}
+#hullWrap{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--safeB) + 18px);width:min(62vw,300px)}
+#hullLbl{display:flex;justify-content:space-between;font-size:13px;font-weight:600;opacity:.8;margin-bottom:5px}
+#hullBar{height:6px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
+#hull{height:100%;width:100%;background:linear-gradient(90deg,var(--hot),var(--amber) 40%,#fff);border-radius:3px;transition:width .15s}
+#tech{position:absolute;right:16px;top:calc(var(--safeT) + 62px);font-size:12px;font-weight:600;opacity:.55;text-align:right}
+#pause{position:absolute;left:16px;top:calc(var(--safeT) + 62px);width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(0,0,0,.2);
+  pointer-events:auto;display:grid;place-items:center;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#pause span{width:12px;height:14px;border-left:4px solid #fff;border-right:4px solid #fff}
+#pause:focus-visible,.btn:focus-visible,.chip:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+#msg{display:flex;align-items:center;justify-content:center;flex-direction:column;opacity:0}
+#msg b{font-size:clamp(38px,12vw,64px);font-weight:800;font-style:italic;line-height:1;text-shadow:0 2px 20px rgba(0,0,0,.5)}
+#msg span{font-size:17px;font-weight:600;margin-top:6px;opacity:.85}
+#msg.show{animation:msg 1.5s ease-out forwards}
+@keyframes msg{0%{opacity:0;transform:scale(1.25)}12%{opacity:1;transform:scale(1)}75%{opacity:1}100%{opacity:0}}
+#flash{background:radial-gradient(ellipse at center,transparent 40%,rgba(255,60,30,.55));opacity:0;transition:opacity .3s}
+
+.screen{display:flex;flex-direction:column;justify-content:space-between;padding:calc(var(--safeT) + 40px) 24px calc(var(--safeB) + 28px);
+  background:linear-gradient(180deg,rgba(10,6,4,.55),transparent 38%,transparent 55%,rgba(10,6,4,.75))}
+.title{font-weight:800;font-style:italic;font-size:clamp(64px,21vw,120px);line-height:.85;letter-spacing:-1px;
+  background:linear-gradient(180deg,#fff 30%,#ffd29a 70%,#ff9a52);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 24px rgba(0,0,0,.4))}
+.lede{font-size:19px;font-weight:500;max-width:22em;line-height:1.3;margin-top:10px;opacity:.92}
+.specs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:22px;max-width:420px}
+.specs div{border-top:1px solid rgba(255,255,255,.35);padding-top:7px}
+.specs b{display:block;font-size:22px;font-weight:700}
+.specs span{font-size:13px;opacity:.7;font-weight:500}
+.how{display:grid;gap:6px;font-size:17px;font-weight:500;margin-bottom:18px}
+.how div{display:flex;gap:10px;align-items:baseline}
+.how i{font-style:normal;color:var(--amber);font-weight:700;width:76px;flex:none}
+.bottom{display:flex;flex-direction:column;gap:14px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.best{font-size:17px;font-weight:600}.best b{color:var(--amber)}
+.chip{font:inherit;font-size:15px;font-weight:600;color:#fff;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:10px 16px;min-height:44px;pointer-events:auto;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.btn{font:inherit;font-size:22px;font-weight:700;letter-spacing:.5px;color:#1c0f06;background:linear-gradient(180deg,#ffe2b0,var(--amber));border:0;border-radius:14px;
+  padding:16px 20px;min-height:56px;pointer-events:auto;box-shadow:0 10px 30px rgba(255,150,60,.35)}
+.big{font-weight:800;font-style:italic;font-size:clamp(60px,19vw,104px);line-height:1}
+.statgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px;max-width:420px;margin-top:18px}
+.statgrid div{border-top:1px solid rgba(255,255,255,.3);padding-top:6px}
+.statgrid b{display:block;font-size:26px;font-weight:700}
+.statgrid span{font-size:14px;opacity:.7}
+.over-h{font-size:22px;font-weight:700;color:var(--hot)}
+.newrec{display:inline-block;margin-top:6px;font-size:16px;font-weight:700;color:#1c0f06;background:var(--amber);padding:3px 10px;border-radius:6px}
+#nogl{display:none;align-items:center;justify-content:center;text-align:center;padding:30px;font-size:20px}
+@media (prefers-reduced-motion:reduce){#msg.show{animation:none;opacity:1}}
+#hap{position:absolute;left:-9999px;opacity:0}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="fx"></canvas>
+<div id="flash" class="layer"></div>
+
+<div id="hud" class="layer fade hidden">
+  <div id="spd" class="gauge"><b class="num" id="spdN">0</b><span>km/h</span></div>
+  <div id="score" class="num">0</div>
+  <div id="combo"></div>
+  <div id="dst" class="gauge"><b class="num" id="dstN">0.0</b><span>km flown</span></div>
+  <button id="pause" aria-label="Pause"><span></span></button>
+  <div id="tech" class="num"></div>
+  <div id="hullWrap"><div id="hullLbl"><span>Hull</span><span id="hullN" class="num">100%</span></div><div id="hullBar"><div id="hull"></div></div></div>
+</div>
+<div id="msg" class="layer"><b id="msgB"></b><span id="msgS"></span></div>
+
+<div id="menu" class="layer screen fade">
+  <div>
+    <div class="title">MERIDIAN</div>
+    <div class="lede">Thread a sandstone canyon at sunset. Every pixel is ray-marched live by your phone's GPU.</div>
+    <div class="specs">
+      <div><b class="num" id="specRes">—</b><span>render pixels</span></div>
+      <div><b class="num" id="specFps">—</b><span>frames / sec</span></div>
+      <div><b>~300</b><span>SDF evals / pixel</span></div>
+    </div>
+  </div>
+  <div class="bottom">
+    <div class="how">
+      <div><i>Drag</i>Steer anywhere on screen</div>
+      <div><i>Rings</i>Thread them for a speed boost</div>
+      <div><i>Light</i>Collect sparks, chain your multiplier</div>
+      <div><i>Skim</i>Fly low over the water for bonus</div>
+    </div>
+    <div class="row"><div class="best">Best <b class="num" id="bestMenu">0</b></div><button class="chip" id="qual">Graphics: Auto</button></div>
+    <button class="btn" id="go">Launch</button>
+  </div>
+</div>
+
+<div id="over" class="layer screen fade hidden">
+  <div>
+    <div class="over-h">Hull breached</div>
+    <div class="big num" id="finalScore">0</div>
+    <div id="newrec" class="newrec hidden">New record</div>
+    <div class="statgrid">
+      <div><b class="num" id="sDist">0</b><span>km flown</span></div>
+      <div><b class="num" id="sTop">0</b><span>top speed, km/h</span></div>
+      <div><b class="num" id="sRings">0</b><span>rings threaded</span></div>
+      <div><b class="num" id="sSparks">0</b><span>sparks collected</span></div>
+    </div>
+  </div>
+  <div class="bottom"><div class="best">Best <b class="num" id="bestOver">0</b></div><button class="btn" id="again">Fly again</button></div>
+</div>
+
+<div id="paused" class="layer screen fade hidden" style="justify-content:center;align-items:flex-start;gap:20px">
+  <div class="title" style="font-size:72px">Paused</div><button class="btn" id="resume" style="min-width:200px">Resume</button>
+</div>
+<div id="nogl" class="layer">This game needs WebGL 2, which this browser didn't provide.</div>
+<label id="hap"><input type="checkbox" switch></label>
+
+<script id="fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes; uniform float uTime, uFov, uBoost, uDmg, uQ, uThrust;
+uniform vec3 uCam, uShip, uSun; uniform mat3 uCamM, uShipM;
+uniform vec4 uPil[10]; uniform vec4 uBeam[3]; uniform vec4 uGate[4]; uniform vec4 uOrb[12];
+
+float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*.1031); p3 += dot(p3, p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash12(i),hash12(i+vec2(1,0)),u.x), mix(hash12(i+vec2(0,1)),hash12(i+vec2(1,1)),u.x),u.y); }
+float fbm(vec2 p){ float a=.5,s=0.; for(int i=0;i<4;i++){ s+=a*noise(p); p=p*2.03+vec2(1.7,9.2); a*=.5; } return s; }
+float pathX(float z){ return sin(z*.011)*34. + sin(z*.0047+1.3)*22.; }
+float halfW(float z){ return 15. + 6.*sin(z*.0131+.7) + 3.*sin(z*.037); }
+float sdEll(vec3 p, vec3 r){ float k0=length(p/r), k1=length(p/(r*r)); return k0*(k0-1.)/k1; }
+float sdBox(vec3 p, vec3 b){ vec3 q=abs(p)-b; return length(max(q,0.))+min(max(q.x,max(q.y,q.z)),0.); }
+float smin(float a,float b,float k){ float h=clamp(.5+.5*(b-a)/k,0.,1.); return mix(b,a,h)-k*h*(1.-h); }
+
+vec2 ship(vec3 p){
+  vec3 q = transpose(uShipM)*(p-uShip);
+  float bound = length(q) - 3.;
+  if (bound > .4) return vec2(bound, 3.);
+  float body = sdEll(q, vec3(.42,.3,2.1));
+  vec3 w = q; w.z += abs(w.x)*.55 + .25;
+  float wing = sdBox(w - vec3(0.,-.06,0.), vec3(1.8,.03,.4)) - .02;
+  vec3 f = q; f.x = abs(f.x)-.34; f.z += 1.4 + f.y*.7;
+  float fin = sdBox(f - vec3(0.,.3,0.), vec3(.025,.3,.22));
+  vec3 e = q; e.x = abs(e.x)-.3; e.y += .04;
+  float eng = max(length(e.xy)-.17, abs(e.z+1.5)-.5);
+  float d = smin(body, wing, .2); d = smin(d, fin, .06); d = smin(d, eng, .05);
+  float m = 3.;
+  float can = sdEll(q - vec3(0.,.2,.55), vec3(.23,.17,.7));
+  if (can < d) { d = can; m = 4.; }
+  if (q.z < -1.85 && length(e.xy) < .15) m = 7.;
+  return vec2(d, m);
+}
+
+vec2 map(vec3 p, bool ws){
+  float qx = p.x - pathX(p.z);
+  float hw = halfW(p.z) + max(p.y-4.,0.)*.45;
+  float disp = 1.4*sin(p.y*.55+p.z*.11) + .9*sin(p.z*.27+p.y*.9);
+  float det = (noise(vec2(p.y*1.6, p.z*.5))-.5)*.4;
+  float rock = max(hw + disp + det - abs(qx), p.y - 46.) * .72;
+  vec2 res = vec2(rock, 1.);
+  if (p.y < res.x) res = vec2(p.y, 2.);
+  for (int i=0;i<10;i++){
+    vec4 c = uPil[i]; float dz = abs(p.z - c.y);
+    if (dz > c.z*1.6 + 3.) { res.x = min(res.x, dz - c.z*1.6 - 1.); continue; }
+    float r = c.z*(1. - .16*sin(p.y*.45 + c.x));
+    float d = max(length(p.xz - c.xy) - r, p.y - c.w);
+    d = smin(d, sdEll(p - vec3(c.x, c.w, c.y), vec3(c.z*1.45, c.z*.5, c.z*1.45)), .7);
+    d += (noise(p.yz*1.3 + c.x) - .5)*.3;
+    if (d < res.x) res = vec2(d, 6.);
+  }
+  for (int i=0;i<3;i++){
+    vec4 b = uBeam[i]; float dz = abs(p.z - b.x) - b.z;
+    if (dz > 3.) { res.x = min(res.x, dz - 1.); continue; }
+    float sag = qx*qx*.01;
+    float dy = b.w < .5 ? (b.y + sag) - p.y : p.y - (b.y - sag);
+    float d = max(dz + (noise(p.xy*.7)-.5)*.5, dy);
+    d = max(d, p.y - 46.);
+    if (d < res.x) res = vec2(d, 6.);
+  }
+  for (int i=0;i<4;i++){
+    vec4 g = uGate[i]; vec3 q = p - g.xyz;
+    if (abs(q.z) > 2.) { res.x = min(res.x, abs(q.z) - .5); continue; }
+    float d = length(vec2(length(q.xy) - g.w, q.z)) - .26;
+    if (d < res.x) res = vec2(d, 5.);
+  }
+  if (ws) { vec2 s = ship(p); if (s.x < res.x) res = s; }
+  return res;
+}
+
+vec2 march(vec3 ro, vec3 rd, float tmax, int steps, bool ws){
+  float t = .05, m = -1.;
+  for (int i=0;i<160;i++){
+    if (i >= steps) break;
+    vec3 p = ro + rd*t;
+    if (p.y > 47. && rd.y > 0.) break;
+    vec2 h = map(p, ws);
+    if (abs(h.x) < .0012*t + .001) { m = h.y; break; }
+    t += h.x*.92;
+    if (t > tmax) break;
+  }
+  return vec2(t, m);
+}
+vec3 calcN(vec3 p, float t){
+  vec2 e = vec2(1.,-1.)*max(.0012*t, .003);
+  return normalize(e.xyy*map(p+e.xyy,true).x + e.yyx*map(p+e.yyx,true).x + e.yxy*map(p+e.yxy,true).x + e.xxx*map(p+e.xxx,true).x);
+}
+float shadow(vec3 ro, vec3 rd){
+  float res = 1., t = .2;
+  for (int i=0;i<28;i++){ float h = map(ro + rd*t, true).x; res = min(res, 9.*h/t); t += clamp(h, .25, 5.); if (res < .01 || t > 90.) break; }
+  return clamp(res, 0., 1.);
+}
+float calcAO(vec3 p, vec3 n){ float o = 0., s = 1.; for (int i=0;i<4;i++){ float h = .2 + .55*float(i); o += (h - map(p + n*h, false).x)*s; s *= .6; } return clamp(1. - o*.5, 0., 1.); }
+
+float sunVis(){ return smoothstep(-.06, .04, uSun.y); }
+vec3 horizon(vec3 rd){
+  float su = uSun.y, sd = max(dot(rd, uSun), 0.);
+  vec3 hor = mix(vec3(.09,.1,.18), vec3(1.,.6,.34), smoothstep(-.2,.12,su));
+  hor = mix(hor, vec3(.72,.8,.9), smoothstep(.18,.55,su));
+  return hor + vec3(1.,.5,.22)*pow(sd, 6.)*.6*sunVis();
+}
+vec3 sky(vec3 rd){
+  float su = uSun.y, h = max(rd.y, 0.), sd = max(dot(rd, uSun), 0.);
+  vec3 zen = mix(vec3(.02,.03,.08), vec3(.2,.38,.72), smoothstep(-.15,.3,su));
+  vec3 col = mix(horizon(rd), zen, pow(h, .5));
+  col += vec3(1.,.78,.5)*pow(sd, 90.)*1.2*sunVis();
+  col += vec3(1.,.92,.75)*smoothstep(.99955,.9998,sd)*14.*sunVis();
+  if (rd.y > .01) {
+    vec2 uv = rd.xz/rd.y*.7 + vec2(uTime*.006, uTime*.002);
+    float c = smoothstep(.48, .82, fbm(uv*1.4));
+    vec3 cc = mix(vec3(1.,.55,.35)*1.3, vec3(1.), smoothstep(.12,.5,su)) * mix(.15, 1., smoothstep(-.15,.08,su));
+    cc += vec3(1.,.45,.2)*pow(sd, 5.)*1.5*sunVis();
+    col = mix(col, cc, c*.75*smoothstep(.01,.2,rd.y));
+  }
+  float night = smoothstep(.02, -.18, su);
+  if (night > 0.) { vec3 s = floor(rd*300.); float st = hash12(s.xy + s.z*17.13); col += vec3(.85,.9,1.)*smoothstep(.982,1.,st)*night*smoothstep(0.,.2,rd.y)*1.5; }
+  return col;
+}
+vec3 sunCol(){ return mix(vec3(1.,.42,.18), vec3(1.,.86,.7), smoothstep(.0,.4,uSun.y))*3.4*sunVis(); }
+vec3 skyAmb(){ return mix(vec3(.04,.06,.14), vec3(.22,.29,.45), smoothstep(-.15,.3,uSun.y)); }
+vec3 rockAlb(vec3 p, vec3 n){
+  float band = sin(p.y*1.6 + noise(p.xz*.07)*3. + noise(p.yz*.25)*1.6);
+  vec3 col = mix(vec3(.55,.24,.13), vec3(.82,.5,.3), smoothstep(-.4,.6,band));
+  col = mix(col, vec3(.4,.17,.1), smoothstep(.75,1.,abs(band))*.6);
+  col *= .78 + .44*noise(p.yz*2.3 + p.x);
+  col = mix(col, vec3(.86,.66,.44), smoothstep(.55,.9,n.y));
+  col = mix(col*vec3(.45,.38,.36), col, smoothstep(.0,3.5,p.y));
+  return col;
+}
+vec3 light(vec3 p, vec3 n, vec3 rd, vec3 alb, float spec, float sh, float ao){
+  vec3 sc = sunCol();
+  float dif = max(dot(n, uSun), 0.);
+  vec3 bdir = normalize(vec3(-uSun.x, -.2, -uSun.z));
+  float bounce = max(dot(n, bdir), 0.);
+  float moon = smoothstep(.0,-.15,uSun.y);
+  vec3 col = alb*(sc*dif*sh + skyAmb()*(.55 + .45*n.y)*ao + vec3(1.,.5,.28)*bounce*.45*sunVis()*ao
+                 + vec3(.25,.35,.7)*.6*moon*max(dot(n, normalize(vec3(.3,.8,-.5))), 0.));
+  vec3 hv = normalize(uSun - rd);
+  col += sc*pow(max(dot(n, hv), 0.), 48.)*spec*sh;
+  return col;
+}
+vec3 waterN(vec3 p){
+  float t = uTime;
+  return normalize(vec3(.05*sin(p.x*1.3 + t*2.) + .035*sin(p.z*.9 - t*1.6 + p.x*.4) + .02*sin(p.x*3.1+p.z*2.3 + t*3.),
+                        1.,
+                        .045*sin(p.z*1.7 + t*2.3) + .03*sin(p.x*2.1 + p.z*.5 - t) + .02*sin(p.z*3.7 - p.x*1.7 + t*2.6)));
+}
+vec3 matCol(vec3 p, vec3 n, vec3 rd, float m, float sh, float ao){
+  if (m < 1.5 || m > 5.5 && m < 6.5) { vec3 a = rockAlb(p, n); if (m > 5.5) a *= vec3(.92,.86,.84); return light(p, n, rd, a, .15, sh, ao); }
+  if (m < 2.5) return vec3(.02,.05,.05) + skyAmb()*.1;
+  if (m < 3.5) {
+    vec3 q = transpose(uShipM)*(p-uShip);
+    vec3 a = vec3(.86,.86,.84);
+    if (abs(q.x) > 1.25 || (q.z > 1.55 && q.z < 1.75)) a = vec3(1.,.36,.12);
+    if (abs(q.x) < .06 && q.y > 0.) a = vec3(.15);
+    return light(p, n, rd, a, 1.2, sh, ao);
+  }
+  if (m < 4.5) return light(p, n, rd, vec3(.03,.035,.05), 2., sh, ao);
+  if (m < 5.5) return vec3(1.,.95,.85)*3.5 + vec3(1.,.6,.3)*pow(1.-abs(dot(n,-rd)),3.)*4.;
+  return mix(vec3(1.,.5,.2), vec3(.6,.8,1.), uThrust)*(4. + uBoost*8.);
+}
+vec3 fogApply(vec3 col, vec3 rd, float t){
+  float f = 1. - exp(-t*.0034);
+  return mix(col, horizon(rd)*mix(.55, 1., sunVis()) + vec3(.06,.08,.14)*(1.-sunVis()), f);
+}
+vec3 reflCol(vec3 p, vec3 r){
+  vec2 h = march(p, r, 260., 70, true);
+  if (h.y < 0.) return sky(r);
+  vec3 q = p + r*h.x;
+  if (h.y > 1.5 && h.y < 2.5) return sky(reflect(r, vec3(0.,1.,0.)))*.35;
+  vec3 n = calcN(q, h.x);
+  float sh = dot(n, uSun) > 0. ? .8 : 0.;
+  return fogApply(matCol(q, n, r, h.y, sh, .7), r, h.x);
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy - .5*uRes)/uRes.y;
+  vec3 ro = uCam, rd = normalize(uCamM*vec3(uv, uFov));
+  vec2 h = march(ro, rd, 420., 140, true);
+  float t = h.x, m = h.y;
+  vec3 col;
+  if (m < 0.) { col = sky(rd); t = 1e4; }
+  else {
+    vec3 p = ro + rd*t;
+    if (m > 1.5 && m < 2.5) {
+      vec3 n = waterN(p);
+      float fr = .03 + .97*pow(1. - max(dot(-rd, n), 0.), 5.);
+      vec3 r = reflect(rd, n);
+      vec3 rc = reflCol(p + vec3(0.,.02,0.), r);
+      float sh = shadow(p + vec3(0.,.05,0.), uSun);
+      vec3 base = vec3(.02,.06,.06)*(skyAmb() + sunCol()*.15*sh);
+      col = mix(base, rc, clamp(fr*1.1, 0., 1.));
+      col += sunCol()*pow(max(dot(r, uSun), 0.), 300.)*3.*sh;
+      float qx = p.x - pathX(p.z), wd = halfW(p.z) + 1.4*sin(p.z*.11) + .9*sin(p.z*.27) - abs(qx);
+      float foam = smoothstep(.9, 0., wd)*smoothstep(.45, .75, noise(p.xz*2.5 + uTime*vec2(.0,1.2)));
+      col = mix(col, (skyAmb() + sunCol()*sh*.5)*.8, foam*.6);
+    } else {
+      vec3 n = calcN(p, t);
+      float sh = shadow(p + n*.04, uSun), ao = calcAO(p, n);
+      col = matCol(p, n, rd, m, sh, ao);
+      if (m > 2.5 && m < 4.5) {
+        float fr = (m < 3.5 ? .08 : .25) + .9*pow(1. - max(dot(-rd, n), 0.), 4.);
+        col = mix(col, reflCol(p + n*.03, reflect(rd, n)), fr*(m < 3.5 ? .55 : .9));
+      }
+    }
+    col = fogApply(col, rd, t);
+  }
+  // light shafts through the canyon
+  if (uQ > .5 && sunVis() > 0.) {
+    float acc = 0., tm = min(t, 140.), j = hash12(gl_FragCoord.xy + fract(uTime)*91.);
+    for (int i=0;i<9;i++){
+      float tt = (float(i) + j)*tm/9.; vec3 q = ro + rd*tt;
+      float lit = step(0., map(q + uSun*7., false).x)*step(0., map(q + uSun*20., false).x)*step(0., map(q + uSun*44., false).x);
+      acc += lit*exp(-tt*.01);
+    }
+    float ph = .25 + pow(max(dot(rd, uSun), 0.), 6.)*1.6;
+    col += sunCol()*vec3(1.,.75,.5)*(acc/9.)*ph*.045;
+  }
+  // gate halos
+  for (int i=0;i<4;i++){
+    vec4 g = uGate[i]; float tp = (g.z - ro.z)/rd.z;
+    if (tp > 0. && tp < t) { vec3 q = ro + rd*tp - g.xyz; float rr = length(q.xy), dr = abs(rr - g.w);
+      float fade = exp(-tp*.006);
+      col += (vec3(1.,.8,.55)*exp(-dr*3.)*.9 + vec3(1.,.6,.3)*step(rr, g.w)*.05*(.6+.4*sin(rr*6. - uTime*8.)))*fade; }
+  }
+  // light sparks
+  for (int i=0;i<12;i++){
+    vec4 o = uOrb[i]; if (o.w < .5) continue;
+    vec3 v = o.xyz - ro; float tc = dot(v, rd);
+    if (tc > 0. && tc < t + 1.) { float d2 = dot(v, v) - tc*tc; float pul = .8 + .2*sin(uTime*9. + o.x);
+      col += vec3(1.,.82,.5)*(.03*pul/(d2 + .006))*exp(-tc*.006); }
+  }
+  // engine exhaust
+  if (uShip.y > -50.) {
+    for (int k=0;k<2;k++){
+      vec3 e = uShip + uShipM*vec3(k == 0 ? .3 : -.3, -.04, -2.05);
+      vec3 v = e - ro; float tc = dot(v, rd);
+      if (tc > 0. && tc < t + 2.) { float d2 = max(dot(v, v) - tc*tc, 0.);
+        vec3 ec = mix(vec3(1.,.55,.25), vec3(.55,.75,1.), uThrust);
+        col += ec*(.0035*(1. + uBoost*3.)/(d2 + .0015)); }
+    }
+  }
+  // grade
+  col *= 1. + uBoost*.15;
+  col = max(col - .012, 0.)*1.08;
+  col = mix(vec3(dot(col, vec3(.299,.587,.114))), col, 1.12);
+  col = (col*(2.51*col + .03))/(col*(2.43*col + .59) + .14);
+  col = pow(clamp(col, 0., 1.), vec3(.4545));
+  vec2 q = gl_FragCoord.xy/uRes;
+  col *= .55 + .45*pow(16.*q.x*q.y*(1.-q.x)*(1.-q.y), .18);
+  col = mix(col, col*vec3(1.4,.6,.5), uDmg*.6*smoothstep(.2, .9, length(q - .5)*1.6));
+  col += (hash12(gl_FragCoord.xy + uTime*60.) - .5)*.025;
+  fragColor = vec4(col, 1.);
+}
+</script>
+
+<script>
+{
+'use strict';
+const $ = id => document.getElementById(id);
+const glc = $('gl'), fxc = $('fx'), fx = fxc.getContext('2d');
+const gl = glc.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'high-performance' });
+if (!gl) { $('nogl').style.display = 'flex'; $('menu').classList.add('hidden'); throw new Error('no webgl2'); }
+
+// ---------- GL setup ----------
+const VS = `#version 300 es
+in vec2 a; void main(){ gl_Position = vec4(a, 0., 1.); }`;
+function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); throw new Error('shader'); } return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, $('fs').textContent.trim()));
+gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(prog)); throw new Error('link'); }
+gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const al = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(al); gl.vertexAttribPointer(al, 2, gl.FLOAT, false, 0, 0);
+const U = {}; ['uRes', 'uTime', 'uFov', 'uBoost', 'uDmg', 'uQ', 'uThrust', 'uCam', 'uShip', 'uSun', 'uCamM', 'uShipM', 'uPil', 'uBeam', 'uGate', 'uOrb'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+// ---------- helpers ----------
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+const pathX = z => Math.sin(z * .011) * 34 + Math.sin(z * .0047 + 1.3) * 22;
+const pathDX = z => .374 * Math.cos(z * .011) + .1034 * Math.cos(z * .0047 + 1.3);
+const halfW = z => 15 + 6 * Math.sin(z * .0131 + .7) + 3 * Math.sin(z * .037);
+const disp = (y, z) => 1.4 * Math.sin(y * .55 + z * .11) + .9 * Math.sin(z * .27 + y * .9);
+const wallAt = (y, z) => halfW(z) + Math.max(y - 4, 0) * .45 + disp(y, z);
+const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function basis(f, roll) {
+  const r0 = norm(cross([0, 1, 0], f)), u0 = cross(f, r0), c = Math.cos(roll), s = Math.sin(roll);
+  const r = [r0[0] * c - u0[0] * s, r0[1] * c - u0[1] * s, r0[2] * c - u0[2] * s];
+  const u = [r0[0] * s + u0[0] * c, r0[1] * s + u0[1] * c, r0[2] * s + u0[2] * c];
+  return { r, u, f };
+}
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+let best = +store.get('meridian.best', 0) || 0;
+
+// ---------- sizing & adaptive resolution ----------
+let W = 0, H = 0, DPR = 1, scale = .45, F = 1, quality = store.get('meridian.q', 'auto');
+const QMAX = { auto: .75, max: 1 };
+function resize() {
+  W = innerWidth; H = innerHeight; DPR = Math.min(devicePixelRatio || 1, 3);
+  F = clamp((.5 * W / H) / Math.tan(33 * Math.PI / 180), .5, 1.25);
+  const fd = Math.min(DPR, 2); fxc.width = W * fd; fxc.height = H * fd; fx.setTransform(fd, 0, 0, fd, 0, 0);
+  applyScale();
+}
+function applyScale() { glc.width = Math.max(64, Math.round(W * DPR * scale)); glc.height = Math.max(64, Math.round(H * DPR * scale)); gl.viewport(0, 0, glc.width, glc.height); }
+let ftAcc = 0, ftN = 0, fpsShow = 60, scaleCool = 0;
+const fixedScale = +new URLSearchParams(location.search).get('scale') || 0;
+if (fixedScale) scale = fixedScale;
+function adapt(ms) {
+  ftAcc += ms; ftN++; if (ftN < 20) return;
+  const avg = ftAcc / ftN; ftAcc = 0; ftN = 0; fpsShow = Math.round(1000 / avg);
+  if (fixedScale) return;
+  scaleCool--; if (scaleCool > 0) return;
+  const max = QMAX[quality] || .75, min = .22;
+  if (avg > 19 && scale > min) { scale = Math.max(min, scale * .88); applyScale(); scaleCool = 2; }
+  else if (avg < 14.5 && scale < max) { scale = Math.min(max, scale * 1.06); applyScale(); scaleCool = 3; }
+}
+
+// ---------- audio ----------
+const AU = { c: null };
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function audioInit() {
+  if (AU.c) { if (AU.c.state !== 'running') AU.c.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  let c; try { c = new AC(); } catch (e) { return; } AU.c = c;
+  const comp = c.createDynamicsCompressor(); comp.threshold.value = -12; comp.ratio.value = 4; comp.connect(c.destination);
+  AU.master = c.createGain(); AU.master.gain.value = .9; AU.master.connect(comp);
+  AU.mlp = c.createBiquadFilter(); AU.mlp.type = 'lowpass'; AU.mlp.frequency.value = 2000; AU.mlp.connect(AU.master);
+  AU.music = c.createGain(); AU.music.gain.value = .5; AU.music.connect(AU.mlp);
+  AU.sfx = c.createGain(); AU.sfx.gain.value = .75; AU.sfx.connect(AU.master);
+  AU.dly = c.createDelay(1); AU.dly.delayTime.value = 60 / 124 * .75; const fb = c.createGain(); fb.gain.value = .35; const dl = c.createBiquadFilter(); dl.frequency.value = 3000;
+  AU.dly.connect(dl); dl.connect(fb); fb.connect(AU.dly); dl.connect(AU.music);
+  const len = c.sampleRate * 2, b = c.createBuffer(1, len, c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; AU.noise = b;
+  // engine
+  AU.eg = c.createGain(); AU.eg.gain.value = 0; AU.ef = c.createBiquadFilter(); AU.ef.type = 'lowpass'; AU.ef.frequency.value = 400; AU.ef.Q.value = 3;
+  AU.eo = [c.createOscillator(), c.createOscillator(), c.createOscillator()]; AU.eo[0].type = 'sawtooth'; AU.eo[1].type = 'sawtooth'; AU.eo[2].type = 'sine';
+  AU.eo.forEach(o => { o.frequency.value = 60; o.connect(AU.ef); o.start(); }); AU.ef.connect(AU.eg); AU.eg.connect(AU.master);
+  // wind + scrape
+  const ws = c.createBufferSource(); ws.buffer = b; ws.loop = true; AU.wf = c.createBiquadFilter(); AU.wf.type = 'bandpass'; AU.wf.Q.value = .6; AU.wg = c.createGain(); AU.wg.gain.value = 0;
+  ws.connect(AU.wf); AU.wf.connect(AU.wg); AU.wg.connect(AU.master); ws.start();
+  const ss = c.createBufferSource(); ss.buffer = b; ss.loop = true; const sf = c.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 2600; sf.Q.value = 2; AU.sg = c.createGain(); AU.sg.gain.value = 0;
+  ss.connect(sf); sf.connect(AU.sg); AU.sg.connect(AU.sfx); ss.start();
+  AU.step = 0; AU.next = c.currentTime + .1;
+  const o = c.createOscillator(), g = c.createGain(); g.gain.value = 0; o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime + .05);
+  setInterval(schedule, 25);
+}
+function env(g, t, pk, a, dur) { g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(pk, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + dur); }
+function tone(type, f, t, dur, pk, dest, a = .004, f2, lp) {
+  const c = AU.c, o = c.createOscillator(), g = c.createGain(); o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  env(g, t, pk, a, dur); if (lp) { const fl = c.createBiquadFilter(); fl.frequency.setValueAtTime(lp, t); fl.frequency.exponentialRampToValueAtTime(Math.max(80, lp * .15), t + dur); o.connect(fl); fl.connect(g); } else o.connect(g);
+  g.connect(dest); o.start(t); o.stop(t + dur + .05);
+}
+function nz(t, dur, pk, type, f, dest, f2, q = 1) { const c = AU.c, s = c.createBufferSource(), fl = c.createBiquadFilter(), g = c.createGain(); s.buffer = AU.noise; fl.type = type; fl.frequency.setValueAtTime(f, t); fl.Q.value = q; if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur); env(g, t, pk, .003, dur); s.connect(fl); fl.connect(g); g.connect(dest); s.start(t, Math.random()); s.stop(t + dur + .05); }
+const PROG = [[38, [0, 3, 7, 10]], [34, [0, 4, 7, 11]], [41, [0, 4, 7, 9]], [36, [0, 4, 7, 10]]];
+function schedule() {
+  const c = AU.c; if (!c || c.state !== 'running') return;
+  if (AU.next < c.currentTime - .2) AU.next = c.currentTime + .05;
+  while (AU.next < c.currentTime + .12) { step(AU.step, AU.next); AU.next += 60 / 124 / 4; AU.step = (AU.step + 1) % 64; }
+}
+function step(s, t) {
+  const st = s % 16, [root, iv] = PROG[s >> 4], live = G.state === 'play' && !G.paused, M = AU.music, spb = 60 / 124 / 4;
+  if (st === 0) iv.slice(0, 3).forEach(k => { tone('sawtooth', mtof(root + 24 + k), t, spb * 16, .03, M, .7, 0, 1400); tone('sawtooth', mtof(root + 24 + k) * 1.007, t, spb * 16, .025, M, .7, 0, 1200); });
+  if (live) {
+    if (st % 4 === 0) tone('sine', 140, t, .3, .9, M, .002, 40);
+    if (st % 2 === 1) nz(t, .03, .07, 'highpass', 8000, M);
+    if (st === 4 || st === 12) { nz(t, .18, .35, 'bandpass', 1800, M, 1000, .8); tone('triangle', 190, t, .1, .2, M, .002, 110); }
+    if (st % 2 === 0) tone('sawtooth', mtof(root + (st % 8 === 6 ? 12 : 0)), t, spb * 1.8, .22, M, .004, 0, 900 + G.speedK * 1400);
+    if (st === 14 && s % 32 > 16) [0, 1].forEach(k => tone('sine', 180 - k * 50, t + k * spb, .2, .4, M, .002, 70));
+  } else if (st % 8 === 0) tone('sawtooth', mtof(root), t, spb * 7, .1, M, .05, 0, 500);
+  if (live || st % 2 === 0) { const n = root + 36 + iv[[0, 2, 1, 3, 2, 0, 3, 1][st % 8]] + (st > 11 ? 12 : 0); tone('square', mtof(n), t, spb * 1.4, live ? .035 : .028, M, .003, 0, 3500); tone('triangle', mtof(n + 12), t, spb, .02, AU.dly); }
+}
+function sfx(n, v = 0) {
+  const c = AU.c; if (!c || c.state !== 'running') return; const t = c.currentTime, D = AU.sfx;
+  if (n === 'spark') { const m = 81 + [0, 2, 3, 5, 7, 8, 10, 12, 14, 15][v % 10]; tone('sine', mtof(m), t, .4, .18, D); tone('sine', mtof(m + 19), t, .15, .05, D); }
+  else if (n === 'ring') { nz(t, .5, .4, 'bandpass', 600, D, 5000, 1.5); [0, 7, 12, 16].forEach((k, i) => tone('triangle', mtof(62 + k), t + i * .04, .5, .1, D)); }
+  else if (n === 'miss') tone('square', 220, t, .2, .06, D, .004, 160);
+  else if (n === 'hit') { nz(t, .6, .9, 'lowpass', 1800, D, 80); tone('sine', 80, t, .5, .8, D, .002, 30); }
+  else if (n === 'boom') { nz(t, 1.6, 1, 'lowpass', 3000, D, 40); tone('sine', 70, t, 1.2, 1, D, .002, 22); }
+  else if (n === 'splash') nz(t, .25, .12, 'highpass', 2500, D);
+  else if (n === 'ui') tone('sine', 880, t, .12, .15, D, .002, 1320);
+}
+function soundTick() {
+  if (!AU.c) return; const t = AU.c.currentTime, play = G.state === 'play' && !G.paused;
+  const sp = S.speed;
+  AU.eo[0].frequency.setTargetAtTime(38 + sp * .55, t, .1); AU.eo[1].frequency.setTargetAtTime(38.6 + sp * .56, t, .1); AU.eo[2].frequency.setTargetAtTime(19 + sp * .27, t, .1);
+  AU.ef.frequency.setTargetAtTime(250 + sp * 9 + G.boost * 1500, t, .1);
+  AU.eg.gain.setTargetAtTime(play && S.alive ? .07 + G.boost * .06 : (G.state === 'menu' ? .02 : 0), t, .2);
+  AU.wf.frequency.setTargetAtTime(300 + sp * 18, t, .2); AU.wg.gain.setTargetAtTime(play ? .03 + sp / 2500 : .015, t, .2);
+  AU.sg.gain.setTargetAtTime(play && G.scrape > 0 ? .5 : 0, t, .03);
+  AU.mlp.frequency.setTargetAtTime(G.state === 'play' ? 16000 : G.state === 'dying' || G.state === 'over' ? 500 : 1800, t, .4);
+}
+const hapLabel = $('hap'); let lastHap = 0;
+function haptic(ms = 12) { const n = performance.now(); if (n - lastHap < 45) return; lastHap = n; try { if (navigator.vibrate) navigator.vibrate(ms); else hapLabel.click(); } catch (e) {} }
+
+// ---------- game state ----------
+const G = { state: 'menu', paused: false, t: 0, score: 0, boost: 0, mult: 1, chain: 0, chainT: 0, sparks: 0, rings: 0, top: 0, nextZ: 120, dmg: 0, shake: 0, scrape: 0, deadT: 0, sunT: 0, speedK: 0, skim: 0, spawned: 0 };
+const S = { z: 0, x: 0, y: 5, vx: 0, vy: 0, tx: 0, ty: 5, speed: 46, hull: 100, alive: true, roll: 0, basis: null, pos: [0, 5, 0] };
+const cam = { p: [0, 8, -10], b: basis([0, 0, 1], 0), roll: 0 };
+let pil = [], beams = [], gates = [], orbs = [], parts = [], motes = [];
+
+function resetRun() {
+  Object.assign(G, { t: 0, score: 0, boost: 0, mult: 1, chain: 0, chainT: 0, sparks: 0, rings: 0, top: 0, nextZ: 140, dmg: 0, shake: 0, scrape: 0, deadT: 0, sunT: 0, skim: 0, spawned: 0 });
+  Object.assign(S, { z: 0, x: 0, y: 5, vx: 0, vy: 0, tx: 0, ty: 5, speed: 46, hull: 100, alive: true, roll: 0 });
+  pil = []; beams = []; gates = []; orbs = []; parts = [];
+}
+function start() {
+  resetRun(); G.state = 'play'; G.paused = false;
+  ['menu', 'over', 'paused'].forEach(i => $(i).classList.add('hidden')); $('hud').classList.remove('hidden');
+  message('Go', 'Thread the rings'); haptic(20);
+}
+function message(b, s) { const m = $('msg'); $('msgB').textContent = b; $('msgS').textContent = s || ''; m.classList.remove('show'); void m.offsetWidth; m.classList.add('show'); }
+
+// ---------- spawning ----------
+function addOrbLine(z0, n, gap, fx_, fy) { for (let i = 0; i < n; i++) { const z = z0 + i * gap; orbs.push({ x: pathX(z) + fx_(i), y: fy(i), z, alive: true }); } }
+function spawn(Z) {
+  const diff = clamp(G.t / 150, 0, 1), hw = halfW(Z), lim = hw - 4;
+  let r = G.spawned++ < 2 ? .1 : Math.random(), gap = lerp(78, 52, diff) + rand(0, 20);
+  if (r < .22) {
+    const ph = rand(0, 6), a = rand(.3, .6) * lim;
+    addOrbLine(Z, 7, 7, i => Math.sin(i * .6 + ph) * a, i => 3 + 2.5 * Math.sin(i * .5 + ph));
+  } else if (r < .45) {
+    const gx = rand(-lim * .55, lim * .55), gy = rand(3.5, 9), R = lerp(3.4, 2.6, diff);
+    gates.push({ x: pathX(Z) + gx, y: gy, z: Z, r: R, done: false, ox: gx });
+    addOrbLine(Z - 30, 3, 8, () => gx, () => gy);
+  } else if (r < .72) {
+    const n = 1 + Math.floor(Math.random() * (1.6 + diff * 1.5));
+    for (let i = 0; i < n; i++) {
+      const z = Z + i * rand(14, 22), w = halfW(z) - 4, rr = rand(1.8, 3.2), tall = Math.random() < .65;
+      const x = pathX(z) + rand(-w * .8, w * .8);
+      pil.push({ x, z, r: rr, h: tall ? 60 : rand(5, 8), hit: false });
+      if (!tall) orbs.push({ x, y: 13, z, alive: true });
+    }
+    gap += n * 14;
+  } else {
+    const type = Math.random() < .5 ? 0 : 1, y0 = type === 0 ? rand(7, 10) : rand(5, 7.5), th = rand(2.5, 4.5);
+    beams.push({ z: Z, y: y0, th, type, hit: false });
+    addOrbLine(Z - 14, 4, 9, () => 0, () => type === 0 ? 3 : y0 + 4);
+    gap += 20;
+  }
+  G.nextZ = Z + gap;
+}
+
+// ---------- particles ----------
+function burst(p, n, col, spd, life = .8, g = -14) {
+  for (let i = 0; i < n; i++) { if (parts.length > 600) parts.shift(); const v = norm([rand(-1, 1), rand(-1, 1), rand(-1, 1)]), s = rand(.3, 1) * spd;
+    parts.push({ p: [...p], v: [v[0] * s, v[1] * s, v[2] * s + S.speed * .6], life: life * rand(.5, 1), max: life, col, g, w: rand(1, 2.4) }); }
+}
+function project(w) {
+  const d = [w[0] - cam.p[0], w[1] - cam.p[1], w[2] - cam.p[2]], b = cam.b;
+  const z = dot(d, b.f); if (z < .2) return null;
+  return [W / 2 + dot(d, b.r) / z * F * H, H / 2 - dot(d, b.u) / z * F * H, z];
+}
+
+// ---------- damage ----------
+function damage(n, why) {
+  if (!S.alive) return;
+  S.hull -= n; G.dmg = Math.min(1, G.dmg + n / 40); G.shake = Math.max(G.shake, n / 60);
+  $('flash').style.opacity = Math.min(1, n / 30); setTimeout(() => $('flash').style.opacity = 0, 120);
+  if (S.hull <= 0) { S.hull = 0; die(why); }
+}
+function die(why) {
+  S.alive = false; G.state = 'dying'; G.deadT = 0; G.shake = 1.4;
+  burst(S.pos, 140, '255,190,110', 40, 1.6, -6); burst(S.pos, 80, '255,90,40', 26, 1.3, -10); burst(S.pos, 40, '255,255,255', 18, .7, 0);
+  sfx('boom'); haptic(60); message(why || 'Hull breached', '');
+}
+function gameOver() {
+  G.state = 'over';
+  const sc = Math.floor(G.score), nb = sc > best; if (nb) { best = sc; store.set('meridian.best', best); }
+  $('finalScore').textContent = sc.toLocaleString(); $('newrec').classList.toggle('hidden', !nb);
+  $('sDist').textContent = (S.z / 1000).toFixed(2); $('sTop').textContent = Math.round(G.top * 9); $('sRings').textContent = G.rings; $('sSparks').textContent = G.sparks;
+  $('bestOver').textContent = best.toLocaleString(); $('bestMenu').textContent = best.toLocaleString();
+  $('hud').classList.add('hidden'); $('over').classList.remove('hidden');
+}
+function chain() {
+  G.chain++; G.chainT = 3;
+  const m = Math.min(8, 1 + Math.floor(G.chain / 5));
+  if (m > G.mult) { G.mult = m; const c = $('combo'); c.textContent = '×' + m + ' multiplier'; c.classList.add('pop'); setTimeout(() => c.classList.remove('pop'), 150); }
+}
+
+// ---------- update ----------
+function update(dt) {
+  G.t += dt; G.dmg = Math.max(0, G.dmg - dt * 1.2); G.shake = Math.max(0, G.shake - dt * 2.5);
+  const play = G.state === 'play';
+  if (G.state === 'menu') {
+    S.tx = Math.sin(G.t * .5) * (halfW(S.z) - 7) * .6; S.ty = 4 + Math.sin(G.t * .37) * 2.5; S.speed = 44;
+  }
+  if (play || G.state === 'menu') {
+    if (play) {
+      G.boost = Math.max(0, G.boost - dt * .45);
+      S.speed = Math.min(128, 46 + G.t * .4) + G.boost * 42;
+      G.top = Math.max(G.top, S.speed); G.speedK = clamp((S.speed - 46) / 100, 0, 1);
+      G.score += S.speed * dt * .5;
+      G.chainT -= dt; if (G.chainT <= 0 && G.chain) { G.chain = 0; G.mult = 1; $('combo').textContent = ''; }
+      S.hull = Math.min(100, S.hull + dt * 1.5);
+    }
+    const pz = S.z; S.z += S.speed * dt;
+    const k = 26, c = 10;
+    S.vx += ((S.tx - S.x) * k - S.vx * c) * dt; S.vy += ((S.ty - S.y) * k - S.vy * c) * dt;
+    S.x += S.vx * dt; S.y += S.vy * dt;
+    if (S.y < 1.3) { S.y = 1.3; S.vy = Math.max(0, S.vy); } if (S.y > 17) { S.y = 17; S.vy = Math.min(0, S.vy); }
+    const lim = wallAt(S.y, S.z) - 1.9;
+    G.scrape = 0;
+    if (Math.abs(S.x) > lim) {
+      const sg = Math.sign(S.x); S.x = sg * lim; S.vx = -sg * Math.abs(S.vx) * .3 - sg * 4; S.tx = sg * Math.min(Math.abs(S.tx), lim - 1);
+      if (play) { G.scrape = 1; damage(34 * dt, 'Wall strike'); G.shake = Math.max(G.shake, .35); haptic(8);
+        const wp = [pathX(S.z) + sg * (lim + 1.6), S.y, S.z + 1]; for (let i = 0; i < 3; i++) parts.push({ p: [...wp], v: [-sg * rand(3, 14), rand(-2, 10), rand(-10, 25) + S.speed * .7], life: rand(.2, .5), max: .5, col: '255,200,120', g: -20, w: rand(1, 2) }); }
+    }
+    S.tx = clamp(S.tx, -(lim + 1), lim + 1);
+    // orientation
+    const dir = norm([pathDX(S.z) + S.vx / S.speed, S.vy / S.speed, 1]);
+    S.roll = lerp(S.roll, clamp(S.vx * .06, -1.1, 1.1), Math.min(1, dt * 8));
+    S.basis = basis(dir, S.roll);
+    S.pos = [pathX(S.z) + S.x, S.y, S.z];
+    if (play) {
+      // skim
+      if (S.y < 1.9) { G.skim += dt; G.score += 40 * dt * G.mult; if (Math.random() < .8) parts.push({ p: [S.pos[0] + rand(-1.5, 1.5), .1, S.z - 1.5], v: [rand(-4, 4), rand(4, 9), S.speed * .55], life: .5, max: .5, col: '235,245,255', g: -22, w: rand(1.2, 2.6) }); if (G.skim > .1 && G.skim - dt <= .1) sfx('splash'); }
+      else G.skim = 0;
+      // spawn & collide
+      while (G.nextZ < S.z + 380) spawn(G.nextZ);
+      for (const o of orbs) if (o.alive && Math.abs(o.z - S.z) < 3) { const d = Math.hypot(o.x - S.pos[0], o.y - S.y, o.z - S.z); if (d < 2.6) { o.alive = false; G.sparks++; chain(); G.score += 50 * G.mult; sfx('spark', G.chain); haptic(6); burst([o.x, o.y, o.z], 14, '255,220,150', 9, .5, 0); } }
+      for (const g of gates) if (!g.done && pz < g.z && S.z >= g.z) {
+        g.done = true; const d = Math.hypot(S.pos[0] - g.x, S.y - g.y);
+        if (d < g.r - .5) { G.rings++; chain(); G.boost = Math.min(1.2, G.boost + .75); G.score += 200 * G.mult; S.hull = Math.min(100, S.hull + 6); sfx('ring'); haptic(25); message('Threaded', '+' + 200 * G.mult + ' · boost'); burst([g.x, g.y, g.z], 50, '255,210,140', 16, .8, 0); }
+        else { G.chain = 0; G.mult = 1; $('combo').textContent = ''; sfx('miss'); }
+      }
+      for (const p of pil) if (!p.hit && Math.abs(p.z - S.z) < p.r + 1.4) {
+        const d = Math.hypot(p.x - S.pos[0], p.z - S.z);
+        if (d < p.r + 1.1 && S.y < p.h + 1.2) { p.hit = true; damage(38, 'Rock impact'); sfx('hit'); haptic(40); burst(S.pos, 60, '255,170,90', 20, .9, -12); S.vx += Math.sign(S.pos[0] - p.x || 1) * 18; }
+      }
+      for (const b of beams) if (!b.hit && Math.abs(b.z - S.z) < b.th + 1) {
+        const qx = S.x, sag = qx * qx * .01;
+        if (b.type === 0 ? S.y > b.y + sag - 1 : S.y < b.y - sag + 1) { b.hit = true; damage(38, 'Rock impact'); sfx('hit'); haptic(40); burst(S.pos, 60, '255,170,90', 20, .9, -12); S.vy += b.type === 0 ? -14 : 14; }
+      }
+      const cz = S.z - 20;
+      pil = pil.filter(p => p.z > cz); beams = beams.filter(b => b.z > cz); gates = gates.filter(g => g.z > cz); orbs = orbs.filter(o => o.z > cz && o.alive);
+    }
+  } else if (G.state === 'dying') {
+    G.deadT += dt; S.z += S.speed * dt * .25; if (G.deadT > 2) gameOver();
+  }
+  // camera
+  const followD = 8.5 + G.speedK * 1.5 + G.boost * 1.5;
+  const cz = S.z - followD;
+  const tp = [pathX(cz) + S.x * .82, S.y * .75 + 3.1, cz];
+  const a = Math.min(1, dt * 7);
+  cam.p = [lerp(cam.p[0], tp[0], a), lerp(cam.p[1], tp[1], a), tp[2]];
+  if (Math.abs(cam.p[0] - tp[0]) > 30) cam.p = tp;
+  const look = [S.pos[0] + S.basis.f[0] * 14, S.y + 1.2 + S.basis.f[1] * 8, S.z + 14];
+  cam.roll = lerp(cam.roll, S.roll * .32, Math.min(1, dt * 5));
+  const sh = G.shake * .35, sp = [cam.p[0] + rand(-sh, sh), cam.p[1] + rand(-sh, sh), cam.p[2]];
+  cam.p = sp; cam.b = basis(norm([look[0] - sp[0], look[1] - sp[1], look[2] - sp[2]]), cam.roll);
+  // motes for speed sense
+  while (motes.length < 90) motes.push({ p: [cam.p[0] + rand(-25, 25), rand(.5, 22), cam.p[2] + rand(5, 120)], pp: null });
+  for (const m of motes) if (m.p[2] < cam.p[2] + 1 || Math.abs(m.p[0] - cam.p[0]) > 40) { m.p = [cam.p[0] + rand(-25, 25), rand(.5, 22), cam.p[2] + rand(60, 140)]; m.pp = null; }
+  for (const p of parts) { p.life -= dt; p.v[1] += p.g * dt; const f = Math.exp(-1.5 * dt); p.v[0] *= f; p.v[1] *= f; p.v[2] *= f; p.p[0] += p.v[0] * dt; p.p[1] += p.v[1] * dt; p.p[2] += p.v[2] * dt; if (p.p[1] < .05) { p.p[1] = .05; p.v[1] *= -.3; } }
+  parts = parts.filter(p => p.life > 0);
+}
+
+// ---------- uniforms ----------
+const fPil = new Float32Array(40), fBeam = new Float32Array(12), fGate = new Float32Array(16), fOrb = new Float32Array(48);
+function pack() {
+  const cz = cam.p[2];
+  const P = pil.filter(p => p.z > cz - 6).sort((a, b) => a.z - b.z);
+  for (let i = 0; i < 10; i++) { const p = P[i]; fPil.set(p ? [p.x, p.z, p.r, p.h] : [0, -1e4, .1, 0], i * 4); }
+  const B = beams.filter(b => b.z > cz - 6).sort((a, b) => a.z - b.z);
+  for (let i = 0; i < 3; i++) { const b = B[i]; fBeam.set(b ? [b.z, b.y, b.th, b.type] : [-1e4, 0, .1, 0], i * 4); }
+  const Gs = gates.filter(g => g.z > cz).sort((a, b) => a.z - b.z);
+  for (let i = 0; i < 4; i++) { const g = Gs[i]; fGate.set(g ? [g.x, g.y, g.z, g.r] : [0, -100, -1e4, 1], i * 4); }
+  const O = orbs.filter(o => o.alive && o.z > cz).sort((a, b) => a.z - b.z);
+  for (let i = 0; i < 12; i++) { const o = O[i]; fOrb.set(o ? [o.x, o.y, o.z, 1] : [0, 0, 0, 0], i * 4); }
+}
+function sunDir() {
+  const tt = G.state === 'play' || G.state === 'dying' || G.state === 'over' ? G.t : 0;
+  const e = .42 * Math.cos(2 * Math.PI * (tt + 38) / 230) - .02, az = .42 + Math.sin(tt * .01) * .2;
+  return [Math.sin(az) * Math.cos(e), Math.sin(e), Math.cos(az) * Math.cos(e)];
+}
+function draw(now) {
+  pack();
+  gl.uniform2f(U.uRes, glc.width, glc.height); gl.uniform1f(U.uTime, now / 1000); gl.uniform1f(U.uFov, F * (1 - G.boost * .12));
+  gl.uniform1f(U.uBoost, G.boost); gl.uniform1f(U.uDmg, G.dmg); gl.uniform1f(U.uQ, quality === 'max' || scale > .34 ? 1 : 0); gl.uniform1f(U.uThrust, clamp(G.boost, 0, 1));
+  gl.uniform3fv(U.uCam, cam.p); gl.uniform3fv(U.uShip, S.alive ? S.pos : [0, -100, 0]); gl.uniform3fv(U.uSun, sunDir());
+  const b = cam.b, sb = S.basis;
+  gl.uniformMatrix3fv(U.uCamM, false, [...b.r, ...b.u, ...b.f]); gl.uniformMatrix3fv(U.uShipM, false, [...sb.r, ...sb.u, ...sb.f]);
+  gl.uniform4fv(U.uPil, fPil); gl.uniform4fv(U.uBeam, fBeam); gl.uniform4fv(U.uGate, fGate); gl.uniform4fv(U.uOrb, fOrb);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+function drawFx() {
+  fx.clearRect(0, 0, W, H);
+  fx.globalCompositeOperation = 'lighter'; fx.lineCap = 'round';
+  const spd = clamp((S.speed - 40) / 90, 0, 1) * (G.state === 'play' ? 1 : .3) + G.boost * .5;
+  for (const m of motes) {
+    const s = project(m.p); if (!s) { m.pp = null; continue; }
+    if (m.pp && spd > .05) { const a = Math.min(.5, spd * .5) * clamp(1 - s[2] / 120, 0, 1); fx.strokeStyle = `rgba(255,235,210,${a})`; fx.lineWidth = clamp(3 / s[2] * 10, .5, 2.5); fx.beginPath(); fx.moveTo(m.pp[0], m.pp[1]); fx.lineTo(s[0], s[1]); fx.stroke(); }
+    m.pp = s;
+  }
+  for (const p of parts) {
+    const s = project(p.p); if (!s) continue; const a = clamp(p.life / p.max, 0, 1), r = clamp(p.w * 18 / s[2], .6, 9);
+    fx.fillStyle = `rgba(${p.col},${a})`; fx.beginPath(); fx.arc(s[0], s[1], r, 0, 6.283); fx.fill();
+  }
+  fx.globalCompositeOperation = 'source-over';
+}
+
+// ---------- HUD ----------
+let lastHud = 0;
+function hud(now) {
+  if (now - lastHud < 80) return; lastHud = now;
+  $('specRes').textContent = glc.width + '×' + glc.height; $('specFps').textContent = fpsShow;
+  if (G.state !== 'play') return;
+  $('spdN').textContent = Math.round(S.speed * 9); $('score').textContent = Math.floor(G.score).toLocaleString();
+  $('dstN').textContent = (S.z / 1000).toFixed(2); $('hull').style.width = S.hull.toFixed(0) + '%'; $('hullN').textContent = Math.ceil(S.hull) + '%';
+  $('tech').textContent = glc.width + '×' + glc.height + ' · ' + fpsShow + ' fps';
+}
+
+// ---------- input ----------
+const ptr = new Map();
+function down(e) {
+  if (e.target.closest && e.target.closest('button')) return;
+  if (e.cancelable) e.preventDefault(); audioInit();
+  if (G.paused) { resume(); return; }
+  ptr.set(e.pointerId, [e.clientX, e.clientY]);
+}
+function move(e) {
+  const p = ptr.get(e.pointerId); if (!p) return; if (e.cancelable) e.preventDefault();
+  const dx = e.clientX - p[0], dy = e.clientY - p[1]; p[0] = e.clientX; p[1] = e.clientY;
+  if (G.state === 'play' && S.alive) { S.tx += dx / W * 46; S.ty = clamp(S.ty - dy / H * 34, 1.3, 17); }
+}
+function up(e) { ptr.delete(e.pointerId); }
+addEventListener('pointerdown', down, { passive: false }); addEventListener('pointermove', move, { passive: false });
+addEventListener('pointerup', up); addEventListener('pointercancel', up);
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+const keys = {};
+addEventListener('keydown', e => { keys[e.key] = true; if (e.key === 'Enter' || e.key === ' ') { audioInit(); if (G.state === 'menu' || G.state === 'over') start(); else if (G.paused) resume(); } if (e.key === 'p' || e.key === 'Escape') G.paused ? resume() : pause(); });
+addEventListener('keyup', e => { keys[e.key] = false; });
+function pause() { if (G.state !== 'play' || G.paused) return; G.paused = true; ptr.clear(); $('paused').classList.remove('hidden'); }
+function resume() { if (!G.paused) return; G.paused = false; $('paused').classList.add('hidden'); last = performance.now(); }
+$('go').addEventListener('click', () => { audioInit(); sfx('ui'); start(); });
+$('again').addEventListener('click', () => { audioInit(); sfx('ui'); start(); });
+$('resume').addEventListener('click', () => resume());
+$('pause').addEventListener('click', () => pause());
+function setQ(q) { quality = q; store.set('meridian.q', q); $('qual').textContent = 'Graphics: ' + (q === 'max' ? 'Max' : 'Auto'); if (q === 'max') { scale = Math.max(scale, .6); applyScale(); } }
+$('qual').addEventListener('click', () => setQ(quality === 'max' ? 'auto' : 'max'));
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); else if (AU.c && AU.c.state !== 'running') AU.c.resume(); });
+addEventListener('resize', resize);
+
+// ---------- loop ----------
+let last = performance.now();
+function frame(now) {
+  const raw = now - last, dt = Math.min(raw / 1000, 1 / 20); last = now;
+  if (G.state === 'play' && !G.paused) {
+    const kx = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0), ky = (keys.ArrowUp || keys.w ? 1 : 0) - (keys.ArrowDown || keys.s ? 1 : 0);
+    S.tx += kx * 30 * dt; S.ty = clamp(S.ty + ky * 18 * dt, 1.3, 17);
+  }
+  if (!G.paused) update(dt);
+  draw(now); drawFx(); hud(now); soundTick();
+  if (!G.paused && raw < 250) adapt(raw);
+  requestAnimationFrame(frame);
+}
+
+(function icon() {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 180; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 180); g.addColorStop(0, '#3a4f7a'); g.addColorStop(.55, '#ffb070'); g.addColorStop(.56, '#7a3a20'); g.addColorStop(1, '#1a0c08');
+    x.fillStyle = g; x.fillRect(0, 0, 180, 180); x.fillStyle = '#fff1d0'; x.beginPath(); x.arc(90, 92, 16, 0, 7); x.fill();
+    x.fillStyle = '#4a1e10'; x.beginPath(); x.moveTo(0, 180); x.lineTo(0, 40); x.lineTo(55, 100); x.lineTo(60, 180); x.fill(); x.beginPath(); x.moveTo(180, 180); x.lineTo(180, 30); x.lineTo(125, 100); x.lineTo(120, 180); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.moveTo(90, 118); x.lineTo(120, 136); x.lineTo(90, 130); x.lineTo(60, 136); x.closePath(); x.fill();
+    const l = document.createElement('link'); l.rel = 'apple-touch-icon'; l.href = c.toDataURL('image/png'); document.head.appendChild(l);
+  } catch (e) {}
+})();
+
+$('bestMenu').textContent = best.toLocaleString(); setQ(quality);
+resize(); S.basis = basis([0, 0, 1], 0);
+requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
